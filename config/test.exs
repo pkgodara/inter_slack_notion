@@ -1,5 +1,28 @@
 import Config
 
+# Disable NotionPoller during tests
+config :inter_slack_notion, :disable_poller, true
+
+# Configure test environment variables
+config :inter_slack_notion,
+  slack_team_id: "T12345",
+  slack: %{
+    bot_token: "test_slack_token"
+  },
+  notion: %{
+    api_key: "test_notion_token",
+    database_id: "test_database_id"
+  },
+  intercom: %{
+    access_token: "test_intercom_token",
+    app_id: "test_app_id"
+  },
+  ai: %{
+    gemini_api_key: "test_gemini_key",
+    deepseek_api_key: "test_deepseek_key",
+    openai_api_key: "test_openai_key"
+  }
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :inter_slack_notion, InterSlackNotionWeb.Endpoint,

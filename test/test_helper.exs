@@ -1,2 +1,3 @@
 ExUnit.start()
-Ecto.Adapters.SQL.Sandbox.mode(InterSlackNotion.Repo, :manual)
+
+Application.put_env(:tesla, :adapter, Tesla.Mock)
