@@ -22,10 +22,15 @@ defmodule InterSlackNotion.Services.IntercomService do
     case get("/conversations/#{id}") do
       {:ok, %{status: 200, body: body}} ->
         try do
-          conversation = parse_conversation(body)
-          app_id = Application.get_env(:inter_slack_notion, :intercom)[:app_id]
-          url = "https://app.intercom.com/a/apps/#{app_id}/conversations/#{id}"
-          {:ok, Map.merge(conversation, %{source: "Intercom", url: url})}
+          case parse_conversation(body) do
+            {:ok, conversation} ->
+              app_id = Application.get_env(:inter_slack_notion, :intercom)[:app_id]
+              url = "https://app.intercom.com/a/apps/#{app_id}/conversations/#{id}"
+              {:ok, Map.merge(conversation, %{source: "Intercom", url: url})}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
         rescue
           e in RuntimeError ->
             {:error, e.message}
@@ -33,6 +38,12 @@ defmodule InterSlackNotion.Services.IntercomService do
           _ ->
             {:error, "Failed to parse conversation data"}
         end
+
+      {:ok, %{status: 401}} ->
+        {:error, "Invalid Intercom access token"}
+
+      {:ok, %{status: 404}} ->
+        {:error, "Conversation not found"}
 
       {:error, error} ->
         {:error, "Error fetching conversation: #{inspect(error)}"}
@@ -46,27 +57,28 @@ defmodule InterSlackNotion.Services.IntercomService do
   Sends a message to an Intercom conversation.
   """
   def send_message(conversation_id, message) do
-    %{
-      "type" => "admin",
-      "id" => admin_id
-    } = me()
+    case me() do
+      %{"id" => admin_id} ->
+        body = %{
+          message_type: "comment",
+          body: message,
+          type: "admin",
+          admin_id: admin_id
+        }
 
-    body = %{
-      message_type: "comment",
-      body: message,
-      type: "admin",
-      admin_id: admin_id
-    }
+        case post("/conversations/#{conversation_id}/reply", body) do
+          {:ok, %{status: 200, body: %{"id" => reply_id}}} ->
+            {:ok, reply_id}
 
-    case post("/conversations/#{conversation_id}/reply", body) do
-      {:ok, %{status: 200}} ->
-        :ok
+          {:ok, %{body: body}} ->
+            {:error, Map.get(body, "message", "Failed to send message")}
 
-      {:ok, err} ->
-        {:error, "Failed to send message. Error: #{inspect(err)}"}
+          {:error, error} ->
+            {:error, "Error sending message: #{inspect(error)}"}
+        end
 
       {:error, error} ->
-        {:error, "Error sending message: #{inspect(error)}"}
+        {:error, "Error fetching admin user: #{inspect(error)}"}
     end
   end
 
@@ -82,64 +94,97 @@ defmodule InterSlackNotion.Services.IntercomService do
     end
   end
 
-  defp parse_conversation(body) do
-    with conversation_id when not is_nil(conversation_id) <- body["id"],
-         conversation_parts when is_list(conversation_parts) <-
-           get_in(body, ["conversation_parts", "conversation_parts"]) || [] do
-      conversation_parts = [body["source"] | conversation_parts]
+  @doc """
+  Parses raw conversation data from Intercom API into a structured format.
+  """
+  def parse_conversation(body) do
+    try do
+      with conversation_id when not is_nil(conversation_id) <- body["id"],
+           conversation_parts when is_list(conversation_parts) <-
+             get_in(body, ["conversation_parts", "conversation_parts"]) || [],
+           source when not is_nil(source) <- body["source"],
+           subject when not is_nil(subject) <- source["subject"] do
+        # Handle conversation parts
+        messages = parse_conversation_parts(conversation_parts)
 
-      filtered_parts =
-        Enum.filter(conversation_parts, fn part ->
-          # Filter out custom_action parts that don't contain actual messages
-          part["part_type"] not in ["custom_action_started", "custom_action_finished"]
-        end)
+        # Add source message only if it contains actual content
+        messages =
+          case parse_source_message(source) do
+            nil -> messages
+            source_message -> [source_message | messages]
+          end
 
-      admin_participants =
-        Enum.filter(conversation_parts, fn part ->
-          part["author"]["type"] == "admin"
-        end)
-        |> Enum.map(fn part -> parse_author(part["author"]) end)
-        |> Enum.uniq()
+        admin_participants =
+          Enum.filter(messages, fn message ->
+            get_in(message, [:author, :type]) == "admin"
+          end)
+          |> Enum.map(fn message -> message.author end)
+          |> Enum.uniq()
 
-      # Convert conversation_id to string to ensure consistent format
-      id = to_string(conversation_id)
-      app_id = System.get_env("INTERCOM_APP_ID")
+        # Convert conversation_id to string to ensure consistent format
+        id = to_string(conversation_id)
 
-      %{
-        id: id,
-        url: "https://app.intercom.com/a/apps/#{app_id}/conversations/#{id}",
-        created_at: body["created_at"],
-        updated_at: body["updated_at"],
-        source: "Intercom",
-        title: body["title"],
-        participants: admin_participants,
-        messages: parse_messages(filtered_parts)
-      }
-    else
-      nil -> raise "Invalid conversation data: missing required fields"
-      _ -> raise "Invalid conversation parts format"
+        conversation = %{
+          id: id,
+          created_at: body["created_at"],
+          updated_at: body["updated_at"],
+          source: "Intercom",
+          title: subject,
+          participants: admin_participants,
+          messages: messages
+        }
+
+        {:ok, conversation}
+      else
+        nil -> {:error, "Invalid conversation data"}
+        _ -> {:error, "Invalid conversation data"}
+      end
+    rescue
+      e in RuntimeError -> {:error, e.message}
+      _ -> {:error, "Failed to parse conversation data"}
     end
   end
 
-  defp parse_messages(conversation_parts) when is_list(conversation_parts) do
-    Enum.map(conversation_parts, fn part ->
-      with id when not is_nil(id) <- part["id"],
-           author when not is_nil(author) <- part["author"] do
+  defp parse_source_message(source) when is_map(source) do
+    case source do
+      %{"body" => body} when not is_nil(body) ->
         %{
-          body: part["body"],
-          author: parse_author(author),
-          created_at: part["created_at"]
+          body: body,
+          author: parse_author(source["author"]),
+          created_at: source["created_at"]
         }
-      else
-        _ -> raise "Invalid message format: missing required fields"
-      end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_source_message(_), do: nil
+
+  defp parse_conversation_parts(parts) when is_list(parts) do
+    parts
+    |> Enum.filter(fn part ->
+      # Filter out custom_action parts that don't contain actual messages
+      part["part_type"] not in ["custom_action_started", "custom_action_finished"]
+    end)
+    |> Enum.map(fn part ->
+      %{
+        body: part["body"],
+        author: parse_author(part["author"]),
+        created_at: part["created_at"]
+      }
     end)
   end
 
-  defp parse_author(author) do
+  defp parse_conversation_parts(_), do: []
+
+  defp parse_author(nil), do: nil
+
+  defp parse_author(author) when is_map(author) do
     %{
       name: author["name"],
-      email: author["email"]
+      email: author["email"],
+      type: author["type"]
     }
   end
 end

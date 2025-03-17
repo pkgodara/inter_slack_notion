@@ -72,26 +72,14 @@ defmodule InterSlackNotion.Integrations.TicketManager do
   defp create_new_ticket(conversation, suggested_title) do
     with {:ok, notion_ticket} <- create_notion_ticket(conversation, suggested_title),
          {:ok, slack_channel} <- create_slack_channel(notion_ticket, conversation),
-         # Verify we have SLACK_TEAM_ID before updating Notion
-         {:ok, _} <- verify_slack_team_id(),
          {:ok, updated_ticket} <-
            NotionService.update_ticket_slack_channel(notion_ticket.id, slack_channel.id) do
       # Sync participants in background to not block the response
       Task.start(fn -> sync_participants(conversation, slack_channel.id) end)
       {:ok, updated_ticket}
     else
-      {:error, "SLACK_TEAM_ID environment variable is not set"} ->
-        {:error, "Cannot create Slack channel URL: SLACK_TEAM_ID not set"}
-
       {:error, error} ->
         {:error, "Failed to create ticket: #{error}"}
-    end
-  end
-
-  defp verify_slack_team_id do
-    case Application.get_env(:inter_slack_notion, :slack_team_id) do
-      nil -> {:error, "SLACK_TEAM_ID environment variable is not set"}
-      _ -> {:ok, true}
     end
   end
 
@@ -156,7 +144,7 @@ defmodule InterSlackNotion.Integrations.TicketManager do
             match_users(conversation.participants, slack_users)
 
           Enum.each(matched_users, fn slack_user_id ->
-            :ok = SlackService.invite_to_channel(slack_channel_id, slack_user_id)
+            SlackService.invite_to_channel(slack_channel_id, slack_user_id)
           end)
 
           {:ok, matched_users}

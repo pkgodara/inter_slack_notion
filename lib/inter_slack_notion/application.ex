@@ -7,18 +7,22 @@ defmodule InterSlackNotion.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      InterSlackNotionWeb.Telemetry,
-      {DNSCluster,
-       query: Application.get_env(:inter_slack_notion, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: InterSlackNotion.PubSub},
-      # Start the Finch HTTP client for sending emails
-      {Finch, name: InterSlackNotion.Finch},
-      # Start the NotionPoller to track resolved tickets
-      InterSlackNotion.Services.NotionPoller,
-      # Start to serve requests, typically the last entry
-      InterSlackNotionWeb.Endpoint
-    ]
+    children =
+      [
+        InterSlackNotionWeb.Telemetry,
+        {DNSCluster,
+         query: Application.get_env(:inter_slack_notion, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: InterSlackNotion.PubSub},
+        # Start the Finch HTTP client for sending emails
+        {Finch, name: InterSlackNotion.Finch},
+        # Start to serve requests, typically the last entry
+        InterSlackNotionWeb.Endpoint
+      ] ++
+        if Application.get_env(:inter_slack_notion, :disable_poller) do
+          []
+        else
+          [InterSlackNotion.Services.NotionPoller]
+        end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
