@@ -125,6 +125,102 @@ The server will be available at [`localhost:4000`](http://localhost:4000).
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+## Deployment to Fly.io
+
+### Prerequisites
+
+1. Install the Fly CLI:
+   ```bash
+   # On macOS
+   brew install flyctl
+   # On Linux
+   curl -L https://fly.io/install.sh | sh
+   ```
+
+2. Login to Fly:
+   ```bash
+   flyctl auth login
+   ```
+
+### Deployment Steps
+
+1. Clone and prepare the repository:
+   ```bash
+   git clone https://github.com/yourusername/inter_slack_notion.git
+   cd inter_slack_notion
+   ```
+
+2. Launch the app (this creates the app but doesn't deploy):
+   ```bash
+   flyctl launch --no-deploy
+   ```
+   This will:
+   - Create a new app on Fly.io
+   - Generate a `fly.toml` configuration file
+   - Set up necessary resources
+
+3. Set up environment variables in Fly:
+   ```bash
+   flyctl secrets set \
+   INTERCOM_ACCESS_TOKEN=$INTERCOM_ACCESS_TOKEN \
+   INTERCOM_APP_ID=$INTERCOM_APP_ID \
+   SLACK_BOT_TOKEN=$SLACK_BOT_TOKEN \
+   SLACK_TEAM_ID=$SLACK_TEAM_ID \
+   NOTION_API_KEY=$NOTION_API_KEY \
+   NOTION_DATABASE_ID=$NOTION_DATABASE_ID \
+   GEMINI_API_KEY=$GEMINI_API_KEY
+   ```
+
+4. Deploy the app:
+   ```bash
+   flyctl deploy --ha=false
+   ```
+
+5. Check the deployment status:
+   ```bash
+   flyctl status
+   ```
+
+6. View the app logs:
+   ```bash
+   flyctl logs
+   ```
+
+### Post-Deployment
+
+1. Get your app's URL:
+   ```bash
+   flyctl apps open
+   ```
+
+2. Update your Intercom webhook URL to point to your new deployment:
+   - Go to your Intercom workspace settings
+   - Navigate to Custom Actions
+   - Update the "Create Notion Ticket" action URL to:
+     `https://your-app-name.fly.dev/api/intercom/create-ticket`
+
+### Troubleshooting
+
+1. If the app fails to start, check the logs:
+   ```bash
+   flyctl logs
+   ```
+
+2. To check resource usage:
+   ```bash
+   flyctl status
+   ```
+
+3. To restart the app:
+   ```bash
+   flyctl restart
+   ```
+
+4. To check environment variables:
+   ```bash
+   flyctl secrets list
+   ```
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

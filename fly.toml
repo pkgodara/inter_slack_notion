@@ -1,0 +1,33 @@
+# fly.toml app configuration file generated for inter-slack-notion-proud-log-6888 on 2025-03-18T12:47:54+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'inter-slack-notion-proud-log-6888'
+primary_region = 'bom'
+kill_signal = 'SIGTERM'
+
+[build]
+
+[env]
+  PHX_HOST = 'inter-slack-notion-proud-log-6888.fly.dev'
+  PORT = '8080'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  max_machines_running = 1
+  processes = ['app']
+
+[http_service.concurrency]
+  type = 'connections'
+  hard_limit = 1000
+  soft_limit = 1000
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

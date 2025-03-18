@@ -29,39 +29,6 @@ defmodule InterSlackNotion.Integrations.TicketManager do
           update_existing_ticket(conversation, ticket_id)
       end
     else
-      # Intercom errors
-      {:error, "Conversation not found: " <> _} = error ->
-        error
-
-      {:error, "Invalid conversation ID format"} = error ->
-        error
-
-      {:error, "Invalid conversation data"} ->
-        {:error, "Failed to process conversation data"}
-
-      # Notion errors
-      {:error, "NOTION_DATABASE_ID environment variable is not set"} ->
-        {:error, "Notion integration not properly configured"}
-
-      {:error, "Invalid Notion database ID format"} ->
-        {:error, "Invalid Notion database configuration"}
-
-      {:error, "Invalid Notion API key"} ->
-        {:error, "Notion API authentication failed"}
-
-      {:error, "Notion database not found"} ->
-        {:error, "Notion database not found or inaccessible"}
-
-      {:error, "Could not connect to Notion API"} ->
-        {:error, "Unable to connect to Notion API"}
-
-      # AI Service errors
-      {:error, "Failed to analyze conversation"} ->
-        {:error, "Unable to analyze conversation content"}
-
-      {:error, "Invalid data format"} ->
-        {:error, "Invalid data received from services"}
-
       # Generic errors
       {:error, error} when is_binary(error) ->
         {:error, error}
