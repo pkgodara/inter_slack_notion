@@ -24,8 +24,7 @@ defmodule InterSlackNotionWeb.IntercomController do
                 status: ticket.status,
                 intercom_conversations: ticket.intercom_conversations,
                 slack_channel: ticket.slack_channel,
-                url: ticket.url,
-                conversation_summary: ticket.children
+                url: ticket.url
               }
             })
 

@@ -3,15 +3,11 @@ defmodule InterSlackNotion.Services.AIService do
   Service for AI-powered analysis and content generation using multi-provider strategy.
   """
 
-  alias InterSlackNotion.Services.{GeminiService, DeepseekService}
+  alias InterSlackNotion.Services.GeminiService
   require Logger
 
-  # Common error codes
-  @quota_error "insufficient_quota"
-  @model_error "model_not_found"
-
   # Order of AI providers to try
-  @providers [:gemini, :deepseek, :openai]
+  @providers [:gemini]
 
   @doc """
   Analyzes a conversation and existing tickets to determine if a new ticket should be created.
@@ -277,61 +273,26 @@ defmodule InterSlackNotion.Services.AIService do
     end
   end
 
-  defp call_provider(:deepseek, prompt), do: DeepseekService.chat_completion(prompt)
-  defp call_provider(:openai, prompt), do: openai_chat_completion(prompt)
   defp call_provider(:gemini, prompt), do: GeminiService.chat_completion(prompt)
+  defp call_provider(_, _), do: {:error, "Unsupported AI provider"}
 
   defp format_error_message(:quota, _), do: "AI service quota exceeded"
   defp format_error_message(:rate_limit, _), do: "rate_limit_exceeded"
   defp format_error_message(:timeout, _), do: "timeout"
   defp format_error_message(_, error), do: "AI service error: #{error}"
 
-  defp parse_json_response(response) when is_binary(response) do
+  defp parse_json_response(response) do
     case Jason.decode(response) do
+      {:ok, %{"content" => content}} ->
+        Jason.decode(content)
+
       {:ok, json} when is_map(json) ->
-        cond do
-          # Handle Gemini API response format
-          is_map(json) and Map.has_key?(json, "candidates") ->
-            case get_in(json, [
-                   "candidates",
-                   Access.at(0),
-                   "content",
-                   "parts",
-                   Access.at(0),
-                   "text"
-                 ]) do
-              nil -> {:error, :invalid_format}
-              # Recursively parse the inner JSON
-              text -> parse_json_response(text)
-            end
+        {:ok, json}
 
-          # Handle direct JSON responses
-          Map.has_key?(json, "matches_existing") and
-              (Map.has_key?(json, "ticket_id") or Map.has_key?(json, "suggested_title")) ->
-            {:ok, json}
-
-          # Handle summary format
-          Map.has_key?(json, "current_status") and
-            Map.has_key?(json, "main_issue") and
-            Map.has_key?(json, "steps_taken") and
-              Map.has_key?(json, "technical_details") ->
-            {:ok, json}
-
-          map_size(json) == 1 ->
-            {:ok, %{"content" => inspect(json)}}
-
-          true ->
-            {:error, :invalid_format}
-        end
-
-      {:error, error} ->
-        IO.puts("\nJSON parse error:")
-        IO.inspect(error)
-        {:error, :invalid_json}
+      {:error, _} ->
+        {:error, "Failed to parse JSON response"}
     end
   end
-
-  defp parse_json_response(_), do: {:error, :invalid_input}
 
   defp classify_error(error) when is_binary(error) do
     cond do
@@ -346,61 +307,6 @@ defmodule InterSlackNotion.Services.AIService do
 
       true ->
         :unrecoverable
-    end
-  end
-
-  defp openai_chat_completion(prompt) do
-    middleware = [
-      {Tesla.Middleware.BaseUrl, "https://api.openai.com/v1"},
-      Tesla.Middleware.JSON,
-      {Tesla.Middleware.Headers,
-       [
-         {"authorization",
-          "Bearer #{Application.get_env(:inter_slack_notion, :openai)[:api_key]}"}
-       ]}
-    ]
-
-    client = Tesla.client(middleware)
-
-    body = %{
-      model: "gpt-3.5-turbo",
-      messages: [
-        %{
-          role: "system",
-          content: "You are a helpful AI assistant analyzing customer support conversations."
-        },
-        %{
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.7
-    }
-
-    case Tesla.post(client, "/chat/completions", body) do
-      {:ok, %{status: 200, body: %{"choices" => [%{"message" => %{"content" => content}} | _]}}} ->
-        {:ok, content}
-
-      {:ok, %{status: 429}} ->
-        {:error, "rate_limit_exceeded"}
-
-      {:ok, %{body: %{"error" => %{"code" => @quota_error}}}} ->
-        {:error, "insufficient_quota"}
-
-      {:ok, %{body: %{"error" => %{"code" => @model_error}}}} ->
-        {:error, "model_not_found"}
-
-      {:ok, %{status: status, body: %{"error" => %{"message" => message}}}} ->
-        {:error, "OpenAI API error (#{status}): #{message}"}
-
-      {:error, %Tesla.Error{reason: :timeout}} ->
-        {:error, "timeout"}
-
-      {:error, %Tesla.Error{reason: :econnrefused}} ->
-        {:error, "Could not connect to OpenAI API"}
-
-      {:error, error} ->
-        {:error, "OpenAI API error: #{inspect(error)}"}
     end
   end
 end

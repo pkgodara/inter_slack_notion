@@ -3,6 +3,8 @@ defmodule InterSlackNotion.Services.GeminiService do
   Service for interacting with Google's Gemini API.
   """
 
+  @behaviour InterSlackNotion.Behaviours.LLMService
+
   use Tesla
 
   plug Tesla.Middleware.BaseUrl, "https://generativelanguage.googleapis.com/v1beta"
@@ -53,13 +55,10 @@ defmodule InterSlackNotion.Services.GeminiService do
 
     case post("/models/#{model}:generateContent?key=#{api_key}", body) do
       {:ok, response} ->
-        # Log response for debugging
-        # IO.puts("\nGemini API Response:")
-        # IO.inspect(response)
         extract_content(response)
 
       {:error, %Tesla.Error{reason: :timeout}} ->
-        {:error, "rate_limit_exceeded"}
+        {:error, "timeout"}
 
       {:error, %Tesla.Error{reason: :econnrefused}} ->
         {:error, "Could not connect to Gemini API"}
@@ -78,12 +77,19 @@ defmodule InterSlackNotion.Services.GeminiService do
       content
       |> String.replace(~r/```json\s*/, "")
       |> String.replace(~r/```\s*/, "")
+      # Remove language identifier
+      |> String.replace(~r/^\s*elixir\s*/, "")
       |> String.trim()
 
     # Try to parse the content as JSON first
     case Jason.decode(clean_content) do
-      {:ok, json} when is_map(json) -> {:ok, Jason.encode!(json)}
-      _ -> {:ok, Jason.encode!(%{"content" => clean_content})}
+      {:ok, json} when is_map(json) ->
+        # Return the JSON as is, since it's already in the correct format
+        {:ok, clean_content}
+
+      _ ->
+        # If not JSON, wrap in content object with consistent formatting
+        {:ok, ~s({"content": #{Jason.encode!(clean_content)}})}
     end
   end
 

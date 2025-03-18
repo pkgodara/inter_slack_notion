@@ -16,11 +16,8 @@ config :inter_slack_notion, :notion,
   database_id: System.get_env("NOTION_DATABASE_ID"),
   poll_interval_ms: 60_000
 
-config :inter_slack_notion, :openai, api_key: System.get_env("OPENAI_API_KEY")
-
-config :inter_slack_notion, :deepseek, api_key: System.get_env("DEEPSEEK_API_KEY")
-
-config :inter_slack_notion, :gemini, api_key: System.get_env("GEMINI_API_KEY")
+config :inter_slack_notion,
+  gemini: [api_key: System.get_env("GEMINI_API_KEY")]
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the

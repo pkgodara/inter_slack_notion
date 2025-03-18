@@ -29,11 +29,13 @@ defmodule InterSlackNotion.Services.AIServiceTest do
   ]
 
   setup do
+    Application.put_env(:inter_slack_notion, :gemini, %{api_key: "test_api_key"})
+
     mock(fn
       %{
         method: :post,
         url:
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=test_api_key"
       } ->
         json = %{
           "candidates" => [

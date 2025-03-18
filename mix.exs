@@ -58,7 +58,8 @@ defmodule InterSlackNotion.MixProject do
       {:tesla, "~> 1.8"},
       {:hackney, "~> 1.18"},
       {:ex_openai, "~> 1.0"},
-      {:uuid, "~> 1.1"}
+      {:uuid, "~> 1.1"},
+      {:mox, "~> 1.1", only: :test}
     ]
   end
 

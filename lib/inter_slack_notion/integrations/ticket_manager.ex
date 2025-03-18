@@ -1,7 +1,9 @@
 defmodule InterSlackNotion.Integrations.TicketManager do
   @moduledoc """
-  Manages the integration between Intercom, Slack, and Notion for ticket handling.
+  Manages ticket lifecycle and integrations between services.
   """
+
+  @behaviour InterSlackNotion.Behaviours.TicketManager
 
   require Logger
 
@@ -244,8 +246,8 @@ defmodule InterSlackNotion.Integrations.TicketManager do
       "The ticket related to this conversation has been resolved. Thank you for your patience!"
 
     Enum.each(ticket.intercom_conversations, fn conversation_url ->
-      conversation_id = extract_conversation_id(conversation_url) |> IO.inspect()
-      IntercomService.send_message(conversation_id, message) |> IO.inspect()
+      conversation_id = extract_conversation_id(conversation_url)
+      IntercomService.send_message(conversation_id, message)
     end)
   end
 

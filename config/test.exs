@@ -17,11 +17,7 @@ config :inter_slack_notion,
     access_token: "test_intercom_token",
     app_id: "test_app_id"
   },
-  ai: %{
-    gemini_api_key: "test_gemini_key",
-    deepseek_api_key: "test_deepseek_key",
-    openai_api_key: "test_openai_key"
-  }
+  gemini_api_key: "test_gemini_key"
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.

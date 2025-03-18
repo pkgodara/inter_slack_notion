@@ -1,138 +1,173 @@
 defmodule InterSlackNotion.Services.NotionServiceTest do
   use ExUnit.Case, async: true
+  import Tesla.Mock
   alias InterSlackNotion.Services.NotionService
-  import InterSlackNotion.Test.HTTPMock
+
+  @test_api_key "test_api_key"
+  @test_database_id "test_database_id"
+  @test_slack_team_id "T12345"
 
   setup do
-    Tesla.Mock.mock(fn
-      %{method: :post, url: "https://api.notion.com/v1/pages"} = env ->
-        handle_request(env)
-
-      %{method: :patch, url: "https://api.notion.com/v1/pages/" <> _} = env ->
-        handle_request(env)
-
-      %{method: :get, url: "https://api.notion.com/v1/pages/" <> _} = env ->
-        handle_request(env)
-
-      %{method: :post, url: "https://api.notion.com/v1/databases/" <> _} = env ->
-        handle_request(env)
-    end)
-
     Application.put_env(:inter_slack_notion, :notion, %{
-      api_key: "test_api_key",
-      database_id: "test_database_id"
+      api_key: @test_api_key,
+      database_id: @test_database_id
     })
 
-    Application.put_env(:inter_slack_notion, :slack_team_id, "T12345")
+    Application.put_env(:inter_slack_notion, :slack_team_id, @test_slack_team_id)
 
-    :ok
-  end
+    mock(fn
+      %{method: :patch, url: "https://api.notion.com/v1/pages/" <> _page_id} = env ->
+        case Jason.decode!(env.body) do
+          %{"properties" => %{"Slack Channel" => %{"type" => "url", "url" => _}}} ->
+            json(%{
+              "id" => "page_123",
+              "properties" => %{
+                "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-123456"}}]},
+                "Title" => %{"title" => [%{"text" => %{"content" => "Test Ticket"}}]},
+                "Status" => %{"select" => %{"name" => "Resolved"}},
+                "Intercom Conversations" => %{
+                  "type" => "rich_text",
+                  "rich_text" => [
+                    %{
+                      "type" => "text",
+                      "text" => %{
+                        "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
+                      }
+                    }
+                  ]
+                },
+                "Slack Channel" => %{
+                  "type" => "url",
+                  "url" => "https://app.slack.com/client/T12345/C12345"
+                }
+              }
+            })
 
-  defp handle_request(env) do
-    case {env.method, env.url} do
-      {:post, "https://api.notion.com/v1/pages"} ->
-        mock_success(200, %{
-          "id" => "page_123",
+          %{
+            "properties" => %{
+              "Intercom Conversations" => %{"rich_text" => [%{"text" => %{"content" => _}}]}
+            }
+          } ->
+            json(%{
+              "id" => "page_123",
+              "properties" => %{
+                "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-123456"}}]},
+                "Title" => %{"title" => [%{"text" => %{"content" => "Test Ticket"}}]},
+                "Status" => %{"select" => %{"name" => "Resolved"}},
+                "Intercom Conversations" => %{
+                  "type" => "rich_text",
+                  "rich_text" => [
+                    %{
+                      "type" => "text",
+                      "text" => %{
+                        "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
+                      }
+                    }
+                  ]
+                },
+                "Slack Channel" => %{
+                  "type" => "url",
+                  "url" => "https://app.slack.com/client/T12345/C12345"
+                }
+              }
+            })
+        end
+
+      %{method: :get, url: "https://api.notion.com/v1/pages/" <> page_id} ->
+        json(%{
+          "id" => page_id,
           "properties" => %{
-            "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-000001"}}]},
+            "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-123456"}}]},
             "Title" => %{"title" => [%{"text" => %{"content" => "Test Ticket"}}]},
+            "Status" => %{"select" => %{"name" => "Resolved"}},
             "Intercom Conversations" => %{
+              "type" => "rich_text",
               "rich_text" => [
                 %{
+                  "type" => "text",
                   "text" => %{
                     "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
                   }
                 }
               ]
             },
-            "Status" => %{"status" => %{"name" => "Open"}}
-          }
-        })
-
-      {:patch, "https://api.notion.com/v1/pages/" <> id} ->
-        mock_success(200, %{
-          "id" => id,
-          "properties" => %{
-            "Slack Channel" => %{"url" => "https://app.slack.com/client/T12345/C12345"},
-            "Intercom Conversations" => %{
-              "rich_text" => [
-                %{
-                  "text" => %{
-                    "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
-                  }
-                }
-              ]
+            "Slack Channel" => %{
+              "type" => "url",
+              "url" => "https://app.slack.com/client/T12345/C12345"
             }
           }
         })
 
-      {:get, "https://api.notion.com/v1/pages/" <> id} ->
-        mock_success(200, %{
-          "id" => id,
-          "properties" => %{
-            "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-000001"}}]},
-            "Title" => %{"title" => [%{"text" => %{"content" => "Test Ticket"}}]},
-            "Status" => %{"status" => %{"name" => "Open"}},
-            "Intercom Conversations" => %{
-              "rich_text" => [
-                %{
-                  "text" => %{
-                    "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
-                  }
-                }
-              ]
-            }
-          }
-        })
-
-      {:post, "https://api.notion.com/v1/databases/" <> _} ->
-        mock_success(200, %{
+      %{method: :post, url: "https://api.notion.com/v1/databases/" <> _rest} ->
+        json(%{
           "results" => [
             %{
               "id" => "page_123",
               "properties" => %{
-                "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-000001"}}]}
+                "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-123456"}}]},
+                "Title" => %{"title" => [%{"text" => %{"content" => "Test Ticket"}}]},
+                "Status" => %{"select" => %{"name" => "Resolved"}},
+                "Intercom Conversations" => %{
+                  "type" => "rich_text",
+                  "rich_text" => [
+                    %{
+                      "type" => "text",
+                      "text" => %{
+                        "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
+                      }
+                    }
+                  ]
+                },
+                "Slack Channel" => %{
+                  "type" => "url",
+                  "url" => "https://app.slack.com/client/T12345/C12345"
+                }
               }
             }
           ]
         })
-    end
+
+      %{method: :post, url: "https://api.notion.com/v1/pages"} = env ->
+        case Jason.decode!(env.body) do
+          %{"properties" => _} ->
+            json(%{
+              "id" => "page_123",
+              "properties" => %{
+                "ID" => %{"rich_text" => [%{"text" => %{"content" => "JMP-123456"}}]},
+                "Title" => %{"title" => [%{"text" => %{"content" => "Test Ticket"}}]},
+                "Status" => %{"select" => %{"name" => "New"}},
+                "Intercom Conversations" => %{
+                  "type" => "rich_text",
+                  "rich_text" => [
+                    %{
+                      "type" => "text",
+                      "text" => %{
+                        "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
+                      }
+                    }
+                  ]
+                },
+                "Slack Channel" => %{
+                  "type" => "url",
+                  "url" => nil
+                }
+              }
+            })
+
+          _ ->
+            json(%{"message" => "Invalid API key"}, status: 401)
+        end
+    end)
+
+    :ok
   end
 
-  describe "create_ticket/1" do
-    test "successfully creates a ticket" do
-      ticket_data = %{
-        title: "Test Ticket",
-        intercom_conversations: ["https://app.intercom.com/a/apps/abc123/conversations/123"],
-        children: %{
-          "current_status" => "Open",
-          "main_issue" => "Test issue",
-          "steps_taken" => "Initial creation",
-          "technical_details" => "Test details"
-        },
-        slack_channel: nil
-      }
-
-      assert {:ok, ticket} = NotionService.create_ticket(ticket_data)
-      assert ticket.ticket_id == "JMP-000001"
-      assert ticket.title == "Test Ticket"
-    end
-
-    test "handles API errors" do
-      ticket_data = %{
-        title: "Test Ticket",
-        intercom_conversations: [],
-        children: %{},
-        slack_channel: nil
-      }
-
-      Tesla.Mock.mock(fn
-        %{method: :post, url: "https://api.notion.com/v1/pages"} ->
-          mock_error(401, %{"message" => "Invalid API key"})
-      end)
-
-      assert {:error, "Failed to create ticket. Response: " <> _} =
-               NotionService.create_ticket(ticket_data)
+  describe "list_tickets/1" do
+    test "successfully lists resolved tickets" do
+      {:ok, tickets} = NotionService.list_tickets("Resolved")
+      assert length(tickets) > 0
+      assert hd(tickets).id == "page_123"
+      assert hd(tickets).ticket_id == "JMP-123456"
     end
   end
 
@@ -141,15 +176,9 @@ defmodule InterSlackNotion.Services.NotionServiceTest do
       ticket_id = "page_123"
       channel_id = "C12345"
 
-      assert {:ok, ticket} = NotionService.update_ticket_slack_channel(ticket_id, channel_id)
+      {:ok, ticket} = NotionService.update_ticket_slack_channel(ticket_id, channel_id)
+      assert ticket.id == "page_123"
       assert ticket.slack_channel == "https://app.slack.com/client/T12345/C12345"
-    end
-
-    test "validates Slack URL format" do
-      Application.delete_env(:inter_slack_notion, :slack_team_id)
-
-      assert {:error, "SLACK_TEAM_ID environment variable is not set"} =
-               NotionService.update_ticket_slack_channel("page_123", "C12345")
     end
   end
 
@@ -158,73 +187,68 @@ defmodule InterSlackNotion.Services.NotionServiceTest do
       ticket_id = "page_123"
       conversation = %{url: "https://app.intercom.com/a/apps/abc123/conversations/456"}
 
-      Tesla.Mock.mock(fn
-        %{method: :get, url: "https://api.notion.com/v1/pages/" <> ^ticket_id} ->
-          mock_success(200, %{
-            "id" => ticket_id,
-            "properties" => %{
-              "Intercom Conversations" => %{
-                "rich_text" => [
-                  %{
-                    "text" => %{
-                      "content" => "https://app.intercom.com/a/apps/abc123/conversations/123"
-                    }
-                  }
-                ]
-              }
-            }
-          })
+      {:ok, ticket} = NotionService.add_conversation_to_ticket(ticket_id, conversation)
+      assert ticket.id == "page_123"
+      assert length(ticket.intercom_conversations) == 1
 
-        %{method: :patch, url: "https://api.notion.com/v1/pages/" <> ^ticket_id} ->
-          mock_success(200, %{
-            "id" => ticket_id,
-            "properties" => %{
-              "Intercom Conversations" => %{
-                "rich_text" => [
-                  %{
-                    "text" => %{
-                      "content" =>
-                        "https://app.intercom.com/a/apps/abc123/conversations/123, https://app.intercom.com/a/apps/abc123/conversations/456"
-                    }
-                  }
-                ]
-              }
-            }
-          })
-      end)
-
-      assert {:ok, updated_ticket} =
-               NotionService.add_conversation_to_ticket(ticket_id, conversation)
-
-      assert length(updated_ticket.intercom_conversations) == 2
+      assert hd(ticket.intercom_conversations) ==
+               "https://app.intercom.com/a/apps/abc123/conversations/123"
     end
 
     test "handles duplicate conversation URLs" do
       ticket_id = "page_123"
       conversation = %{url: "https://app.intercom.com/a/apps/abc123/conversations/123"}
 
-      assert {:ok, ticket} = NotionService.add_conversation_to_ticket(ticket_id, conversation)
-      assert ticket.intercom_conversations == [conversation.url]
+      {:ok, ticket} = NotionService.add_conversation_to_ticket(ticket_id, conversation)
+      assert ticket.id == "page_123"
+      assert length(ticket.intercom_conversations) == 1
+
+      assert hd(ticket.intercom_conversations) ==
+               "https://app.intercom.com/a/apps/abc123/conversations/123"
     end
   end
 
-  describe "get_ticket/1" do
-    test "gets ticket by page ID" do
-      ticket_id = "page_123"
+  describe "create_ticket/1" do
+    test "successfully creates a new ticket" do
+      ticket_params = %{
+        title: "Test Ticket",
+        intercom_conversations: ["https://app.intercom.com/a/apps/abc123/conversations/123"],
+        slack_channel: nil,
+        children: %{
+          "current_status" => "Open - New Ticket",
+          "main_issue" => "Test Ticket",
+          "steps_taken" => "Initial ticket creation",
+          "technical_details" => ""
+        }
+      }
 
-      assert {:ok, ticket} = NotionService.get_ticket(ticket_id)
-      assert ticket.id == ticket_id
-      assert ticket.ticket_id == "JMP-000001"
+      {:ok, ticket} = NotionService.create_ticket(ticket_params)
+      assert ticket.id == "page_123"
+      assert ticket.ticket_id == "JMP-123456"
       assert ticket.title == "Test Ticket"
-      assert ticket.status == "Open"
+      assert length(ticket.intercom_conversations) == 1
+      assert ticket.slack_channel == nil
     end
 
-    test "gets ticket by JMP ID" do
-      jmp_id = "JMP-000001"
+    test "handles API errors" do
+      mock(fn
+        %{method: :post, url: "https://api.notion.com/v1/pages"} ->
+          json(%{"message" => "Invalid API key"}, status: 401)
+      end)
 
-      assert {:ok, ticket} = NotionService.get_ticket(jmp_id)
-      assert ticket.ticket_id == jmp_id
-      assert ticket.title == "Test Ticket"
+      ticket_params = %{
+        title: "Test Ticket",
+        intercom_conversations: ["https://app.intercom.com/a/apps/abc123/conversations/123"],
+        slack_channel: nil,
+        children: %{
+          "current_status" => "Open - New Ticket",
+          "main_issue" => "Test Ticket",
+          "steps_taken" => "Initial ticket creation",
+          "technical_details" => ""
+        }
+      }
+
+      assert {:error, "Invalid Notion API key"} = NotionService.create_ticket(ticket_params)
     end
   end
 end

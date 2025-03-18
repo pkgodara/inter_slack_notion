@@ -3,6 +3,8 @@ defmodule InterSlackNotion.Services.NotionService do
   Service for interacting with the Notion API.
   """
 
+  @behaviour InterSlackNotion.Behaviours.NotionService
+
   use Tesla
 
   require Logger
@@ -94,8 +96,11 @@ defmodule InterSlackNotion.Services.NotionService do
       {:ok, %{status: 200, body: page}} ->
         {:ok, PropertyParser.parse_ticket(page)}
 
-      {:ok, resp} ->
-        {:error, "Failed to create ticket. Response: #{inspect(resp)}"}
+      {:ok, %{status: 401}} ->
+        {:error, "Invalid Notion API key"}
+
+      {:ok, %{status: status, body: %{"message" => message}}} ->
+        {:error, "Notion API error (#{status}): #{message}"}
 
       {:error, %Tesla.Error{reason: :econnrefused}} ->
         {:error, "Could not connect to Notion API"}
@@ -237,34 +242,26 @@ defmodule InterSlackNotion.Services.NotionService do
     end
   end
 
-  # Private functions
+  @doc """
+  Updates a ticket in Notion.
+  """
+  def update_ticket(page_id, updates) do
+    case patch("/pages/#{page_id}", %{"properties" => updates}) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, PropertyParser.parse_ticket(body)}
 
-  defp update_ticket(page_id, properties) do
-    Logger.info("Updating Notion page #{page_id} with properties: #{inspect(properties)}")
+      {:ok, %{status: 401}} ->
+        {:error, "Invalid Notion API key"}
 
-    case patch("/pages/#{page_id}", %{"properties" => properties}) do
-      {:ok, %{status: 200, body: page}} ->
-        updated_ticket = PropertyParser.parse_ticket(page)
-        Logger.info("Successfully updated ticket properties: #{inspect(updated_ticket)}")
-        {:ok, updated_ticket}
-
-      {:ok, %{status: status, body: %{"object" => "error", "message" => message}}} ->
-        Logger.error("Failed to update ticket (#{status}): #{message}")
-        {:error, "Failed to update ticket: #{message}"}
-
-      {:ok, %{status: status, body: body}} ->
-        Logger.error("Failed to update ticket (#{status}): #{inspect(body)}")
-        {:error, "Failed to update ticket: Status #{status}, #{inspect(body)}"}
-
-      {:error, %Tesla.Error{reason: reason}} when reason in [:timeout, :econnrefused] ->
-        Logger.error("Connection error updating ticket: #{reason}")
-        {:error, "Connection error: #{reason}"}
+      {:ok, %{status: status, body: %{"message" => message}}} ->
+        {:error, "Notion API error (#{status}): #{message}"}
 
       {:error, error} ->
-        Logger.error("Failed to update ticket: #{inspect(error)}")
         {:error, "Failed to update ticket: #{inspect(error)}"}
     end
   end
+
+  # Private functions
 
   defp get_current_urls(nil), do: []
   defp get_current_urls(url) when is_binary(url), do: [String.trim(url)]
